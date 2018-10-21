@@ -2,6 +2,7 @@ import java.io.*;
 import java.util.Scanner;
 import java.util.HashMap;
 import java.io.FileWriter;
+import java.util.Random;
 import java.io.PrintWriter;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -14,37 +15,32 @@ public class BlockChain {
 	private ArrayList<Block> blocks;
 
 	public static void main(String[] args){
-		String senderInput;
-		String receiverInput;
-		int amountToSend;
+		
 		//1. Read blockchain from file
 		BlockChain blockChain = fromFile("C:\\Users\\Graydon\\Documents\\School\\University of Ottawa\\Second Year\\Data Structures and Algorithms - CSI 2110\\CSI_Asignment2\\bitCoinBank.txt");		
-		/*
-		int size = blockChain.blocks.size();
-		for(int i = 0; i < size; i++){
-			System.out.println("Previous Hash:  " + blockChain.blocks.get(i).getPreviousHash() + "\n" + "   Current Hash:  " + blockChain.blocks.get(i).getHash());
-		}
 		
-		*/
-		
-		//ToFile Test
-		blockChain.toFile("C:\\Users\\Graydon\\Documents\\School\\University of Ottawa\\Second Year\\Data Structures and Algorithms - CSI 2110\\CSI_Asignment2\\test.txt");
-
 		//2. Validate blockchain
 		boolean blockChainValidated = blockChain.validateBlockChain();
 		System.out.println("Block chain is validated?: " + blockChainValidated);
 
 		//3. Prompt user for new transaction and verify it
 		if(blockChainValidated){
-			System.out.println("Your current BlockChain is Valid!" + "\n" + "Please create a new Transaction." + "\n");
-			senderInput = blockChain.promptUserForSenderInput();
-			receiverInput = blockChain.promptUserForReceiverInput();
-			amountToSend = blockChain.promptUserForAmount();
+			System.out.println("Your current block chain was validated!");
+			blockChain.addTransactionToChain(blockChain);
 		}
 
-		//4. Adding transaction to blockchain
-		//5. asking if user wants to add more transactions (if yes go back to 3)
-		//6. Save blockchain to a file with specific filename
+		blockChain.toFile("C:\\Users\\Graydon\\Documents\\School\\University of Ottawa\\Second Year\\Data Structures and Algorithms - CSI 2110\\CSI_Asignment2\\test.txt");
+
+
+		/*
+		Printing all senders and receivers of blockchain
+		int size = blockChain.blocks.size();
+		for(int i = 0; i < size; i++){
+			System.out.println("Sender:  " + blockChain.blocks.get(i).getTransaction().getSender() + " Receiver: " + blockChain.blocks.get(i).getTransaction().getReceiver());
+		}
+
+		*/
+
 	}
 
 	public BlockChain(Block block){
@@ -75,6 +71,77 @@ public class BlockChain {
 		}
 		return null;
 	}
+
+	public void addTransactionToChain(BlockChain blockChain){
+		int amountToSend;
+		String senderInput, receiverInput, userAnswer;
+		Scanner scannerInput = new Scanner(System.in);
+		boolean addAnotherTransaction = true, validInput = true;
+
+		while(addAnotherTransaction){
+			senderInput = blockChain.promptUserForSenderInput();
+			receiverInput = blockChain.promptUserForReceiverInput();
+			amountToSend = blockChain.promptUserForAmount();
+			Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+			Transaction transaction = new Transaction(senderInput, receiverInput, amountToSend);
+			int incrementedIndex;
+			String previousHash;
+
+			//4. Adding transaction to blockchain
+			if(blockChain.getBalance(senderInput) >= amountToSend){
+				int currentBlockChainLength = blockChain.blocks.size();
+
+				if(currentBlockChainLength == 0){
+					incrementedIndex = 0;
+					previousHash = "00000";
+				}
+				else{
+					incrementedIndex = blockChain.blocks.get(currentBlockChainLength - 1).getIndex() + 1;
+					previousHash 	 = blockChain.blocks.get(currentBlockChainLength - 1).getPreviousHash();
+				}
+
+				//Fix creating the timestamp to proper "current" time. System.getTime() or something. for now use currentime in milli
+				String nonce = blockChain.generateNonce(Long.toString(timestamp.getTime()), transaction.toString(), previousHash);
+
+				//Make hash with all new strings
+				try{
+
+					String hash = Sha1.hash(Long.toString(timestamp.getTime()) + ":" + transaction.toString() + "." + nonce + previousHash);
+					System.out.println(hash);
+					Block newBlock  = new Block(incrementedIndex, timestamp, transaction, nonce, previousHash, hash);
+					blockChain.add(newBlock);
+					validInput = false;
+
+					while(!validInput){
+						validInput = false;
+						System.out.println("Would you like to add another Transaction?" + "\n" + 
+										"Please enter yes or no");
+						userAnswer = scannerInput.nextLine();
+						if(userAnswer.equals("yes")){
+							validInput = true;
+							addAnotherTransaction = true;
+						}
+						else if(userAnswer.equals("no")){
+							validInput = true;
+							addAnotherTransaction = false;
+						}
+						else{
+							System.out.println("Invalid entry. Please try again");{
+								validInput = false;
+							}
+						}
+					}
+				}
+				catch(UnsupportedEncodingException e){
+					e.printStackTrace();
+				}
+			}
+			else{
+				System.out.println("Insufficient Funds");
+			}
+		}
+	}
+
 
 	public static String promptUserForReceiverInput(){
 		boolean validReceiverInput = false;
@@ -177,7 +244,7 @@ public class BlockChain {
 						transaction 		= new Transaction(sender, receiver, amountOfTransaction);
 						String previousHash = blockChain.getPreviousHash(blockChain, blockNumber);
 						block               = new Block(index, timestamp, transaction, nonce, previousHash, expectedHash);
-						blockChain.addBlock(block);
+						blockChain.add(block);
 						blockNumber++;				
 						
 						//Reset counter and clear all mappings from hash map.
@@ -204,7 +271,7 @@ public class BlockChain {
 		return blockChain.blocks.get(blockNumber - 1).getHash();
 	}
 
-	public void addBlock(Block block){
+	public void add(Block block){
 		blocks.add(block.getIndex(), block);
 	}
 
@@ -346,5 +413,42 @@ public class BlockChain {
 		}
 		return null;
 	}
-	
+
+	public String generateNonce(String timestamp, String transaction, String previousHash){
+		String beforeNonce = timestamp + ":" + transaction + ".";
+		String combineNonce, hash, firstFiveChars;
+		char[] generatedNonce = new char[4];
+
+		for(int i = 0; i < 95; i++){
+
+			for(int j = 0; j < 95; j++){
+
+				for(int k = 0; k < 95; k++){
+
+					for(int m = 0; m < 95; m++){
+						generatedNonce[0] = (char) (i + 33);
+						generatedNonce[1] = (char) (j + 33);
+						generatedNonce[2] = (char) (k + 33);
+						generatedNonce[3] = (char) (m + 33);
+
+						combineNonce = beforeNonce + String.valueOf(generatedNonce[0]) + String.valueOf(generatedNonce[1]) + String.valueOf(generatedNonce[2]) + String.valueOf(generatedNonce[3]) + previousHash;
+
+
+						try{
+							hash = Sha1.hash(combineNonce);
+							firstFiveChars = hash.substring(0, Math.min(hash.length(), 5));
+							if(firstFiveChars.equals("00000")){
+								return String.valueOf(generatedNonce[0]) + String.valueOf(generatedNonce[1]) + String.valueOf(generatedNonce[2]) + String.valueOf(generatedNonce[3]);
+							}
+						}
+						catch(UnsupportedEncodingException e){
+							e.printStackTrace();
+						}
+					}
+				}
+			}
+		}
+
+		return null;
+	}
 }
