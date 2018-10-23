@@ -55,7 +55,7 @@ public class Block {
 	public String getPreviousHash(){
 		return this.previousHash;
 	}
-
+	
 	public void setHash(String hash){
 		this.hash = hash;
 	}
